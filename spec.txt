@@ -1,0 +1,68 @@
+Condition codes: Z, N, C
+
+Conditionals:
+    000 - eq
+    001 - ne
+    010 - lt
+    011 - ge
+    100 - le
+    101 - gt
+    110 - ???
+    111 - unconditional
+
+ALU ops:
+    0000: rD | rS  (or)
+    0001: rD & rS  (and)
+    0010: rD ^ rS  (xor)
+    0011: rD & ~rS (bic)
+    0100: rD + rS 
+    0101: rD + rS w/ carry
+    0110: rD - rS
+    0111: rD - rS w/ carry
+    1000: ~rS
+    1001: 0 - rS
+    1010: rS + 1
+    1011: rS - 1
+    1100: rS >> 1
+    1101: rS >> 1, carry in high bit (use r0 to get carry as high bit)
+    1110: rS << 1
+    1111: rS << 1, carry in low bit  (use r0 to get carry as low bit)
+
+Load/store:
+    load/store register from/to register with immediate offset
+    load register from PC + immediate offset
+
+Control flow:
+    branch (and link) relative w/ conditional
+    jump absolute?
+    jump to link register
+    move link register to/from normal register
+
+Things still needed:
+    link register ops
+    set/clear carry bit
+
+0000 0000 0000 0000 - invalid
+0000 0000 xxxx xxxx - reserved
+
+0000 DDDD CCCC CCCC - load constant C to rD with high bits 0
+0001 DDDD CCCC CCCC - load constant C to rD with high bits 1
+0010 DDDD CCCC CCCC - load constant C<<8 to rD with low bits 0
+0011 DDDD CCCC CCCC - load constant C<<8 to rD with low bits 1
+
+0100 DDDD IIII IIII - load rD from M[nextPC + 2*I]
+
+0101 DDDD SSSS MMMM - ALU: rD op rS -> rD, operation selected by MMMM
+0110 xxxx xxxx xxxx - available
+0111 xxxx xxxx xxxx - available
+
+0111 DDDD 0000 xxxx - rD <- input
+0111 DDDD 0001 xxxx - rD -> output
+
+10LW DDDD SSSS IIII - load/store (store if L=1) rD from M[rS + I*(W+1)]  (width in W: 0=byte 1=word)
+                      this is a really small immediate offset and it makes me sad
+                      8xxx = load byte, 9xxx = load word, a000 = store byte, b000 = store word
+
+110L CCCI IIII IIII - branch (and link if L) to nextPC + 2*I on condition C
+
+111x xxxx xxxx xxxx - reserved

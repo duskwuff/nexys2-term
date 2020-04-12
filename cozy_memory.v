@@ -8,19 +8,23 @@ module cozy_memory (
     output wire [15:0] dout
 );
 
-parameter  BITS = 8;
+parameter BITS = 8;
 localparam DEPTH = 2**BITS;
+
+parameter INIT_HI = "";
+parameter INIT_LO = "";
 
 (* RAM_STYLE="BLOCK" *)
 reg [7:0] ram_hi [DEPTH/2-1:0];
-initial begin
-    $readmemh("program-hi.mem", ram_hi);
-end
 
 (* RAM_STYLE="BLOCK" *)
 reg [7:0] ram_lo [DEPTH/2-1:0];
+
 initial begin
-    $readmemh("program-lo.mem", ram_lo);
+    if (INIT_LO)
+        $readmemh(INIT_LO, ram_lo);
+    if (INIT_HI)
+        $readmemh(INIT_HI, ram_hi);
 end
 
 wire [BITS-2:0] waddr = addr[BITS-1:1];

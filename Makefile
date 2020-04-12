@@ -22,6 +22,7 @@ PAR_OPTS        =
 BITGEN_OPTS     =
 TRACE_OPTS      = -e
 FUSE_OPTS       = -incremental -lib unisims_ver
+VERILATOR_OPTS  = -I$(XILINX)/verilog/xeclib/unisims
 
 PROGRAMMER      = none
 
@@ -148,6 +149,9 @@ $(BITFILE): project.cfg $(VSOURCE) $(CONSTRAINTS) build/$(PROJECT).prj build/$(P
 trace: project.cfg $(BITFILE)
 	$(call RUN,trce) $(COMMON_OPTS) $(TRACE_OPTS) \
 	    $(PROJECT).ncd $(PROJECT).pcf
+
+lint: $(VSOURCE)
+	verilator $(VERILATOR_OPTS) --lint-only $(VSOURCE)
 
 test: $(foreach file,$(VTEST) $(VHDTEST),build/$(basename $(file)).vcd)
 

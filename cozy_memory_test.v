@@ -6,12 +6,14 @@ module cozy_memory_test ();
 
 `CLOCK(clk, 1);
 
-reg [12:0] addr = 0;
+reg [15:0] addr = 0;
 reg [15:0] din = 0;
 reg [1:0] bwe = 0;
 wire [15:0] dout;
 
-cozy_memory #( .DEPTH(4) ) UUT (
+cozy_memory #(
+    .BITS(4)
+) UUT (
     .clk    (clk),
     .addr   (addr),
     .din    (din),

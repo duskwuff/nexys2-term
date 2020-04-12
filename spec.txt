@@ -52,12 +52,12 @@ Things still needed:
 
 0100 DDDD IIII IIII - load rD from M[nextPC + 2*I]
 
-0101 DDDD SSSS MMMM - ALU: rD op rS -> rD, operation selected by MMMM
-0110 xxxx xxxx xxxx - available
-0111 xxxx xxxx xxxx - available
+0101 DDDD WMMM MMMM - MFSPR W=0 / MTSPR W=1
+    M=0: PC
+    M=1: LR
 
-0111 DDDD 0000 xxxx - rD <- input
-0111 DDDD 0001 xxxx - rD -> output
+0110 DDDD SSSS MMMM - ALU: rD op rS -> rD, operation selected by MMMM
+0111 DDDD SSSS MMMM - CMP: same as ALU but no writeback
 
 10LW DDDD SSSS IIII - load/store (store if L=1) rD from M[rS + I*(W+1)]  (width in W: 0=byte 1=word)
                       this is a really small immediate offset and it makes me sad

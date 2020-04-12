@@ -1,0 +1,9 @@
+To do
+=====
+
+* CMP (sub without writeback)
+* Byte swap
+* "pure" register move
+* Link register, stack, or lr in register?
+
+- better lr handling (a blr would be nice)

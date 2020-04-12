@@ -5,17 +5,31 @@ module cozy_cpu_test ();
 `include "testbench-helpers.v"
 
 `CLOCK(clk, 1);
-`TIMEOUT(30000);
+`TIMEOUT(10000);
 
 reg nrst;
 
-reg [7:0] inport;
-wire [7:0] outport;
+wire [1:0] bwe;
+wire [15:0] addr, drd, dwr;
+
 cozy_cpu UUT (
     .clk        (clk),
     .reset_n    (nrst),
-    .inport     (inport),
-    .outport    (outport)
+
+    .mem_addr   (addr),
+    .mem_bwe    (bwe),
+    .mem_dout   (dwr),
+    .mem_din    (drd)
+);
+
+cozy_memory #(
+    .BITS (8)
+) MEM (
+    .clk        (clk),
+    .addr       (addr),
+    .bwe        (bwe),
+    .din        (dwr),
+    .dout       (drd)
 );
 
 integer prog_pc = 0;
@@ -29,13 +43,13 @@ initial begin
     prog_pc = 0; \
     UUT.pc = 'bx; UUT.state = 'bx; UUT.cond = 'bx; \
     for (i = 1; i <= 15; i = i + 1) UUT.REG.R[i] = 16'bxxxx; \
-    for (i = 0; i < 256; i = i + 2) begin UUT.MEM.ram_hi[i/2] = 8'bxx; UUT.MEM.ram_lo[i/2] = 8'bxx; end \
+    for (i = 0; i < 256; i = i + 2) begin MEM.ram_hi[i/2] = 8'bxx; MEM.ram_lo[i/2] = 8'bxx; end \
 end
-`define MEM_SET(addr, val) {UUT.MEM.ram_hi[(addr)/2], UUT.MEM.ram_lo[(addr)/2]} <= val;
+`define MEM_SET(addr, val) {MEM.ram_hi[(addr)/2], MEM.ram_lo[(addr)/2]} <= val;
 `define PROGRAM(word) `MEM_SET(prog_pc, word); prog_pc = prog_pc + 2;
 `define PULSE_RESET nrst = 0; #1; nrst = 1; #1;
-`define WAIT_FOR_HALT @(UUT.state == 'b1110); #0.5;
-`define MEM_IS(addr, val) `IS({UUT.MEM.ram_hi[(addr)/2], UUT.MEM.ram_lo[(addr)/2]}, (val));
+`define WAIT_FOR_HALT @(UUT.state == 'b110); #0.5;
+`define MEM_IS(addr, val) `IS({MEM.ram_hi[(addr)/2], MEM.ram_lo[(addr)/2]}, (val));
 
 `WAIT_GSR;
 
@@ -59,8 +73,8 @@ end
     #1; `IS(UUT.pc, 16'h0008); `IS(UUT.REG.r1,  16'hff45);
     #1; `IS(UUT.pc, 16'h000a); `IS(UUT.REG.r1,  16'h5600);
     #1; `IS(UUT.pc, 16'h000c); `IS(UUT.REG.r1,  16'h67ff);
-    #1; `IS(UUT.pc, 16'h000c); `IS(UUT.state, 4'b1110); // halted
-    #1; `IS(UUT.pc, 16'h000c); `IS(UUT.state, 4'b1110); // still halted
+    #1; `IS(UUT.pc, 16'h000c); `IS(UUT.state, 4'b110); // halted
+    #1; `IS(UUT.pc, 16'h000c); `IS(UUT.state, 4'b110); // still halted
 
 
 `NOTE("Load PC-relative test");
@@ -74,7 +88,8 @@ end
     `PROGRAM(16'h0d0c); // 0c
     `PROGRAM(16'h5678); // 0e
 
-    `PULSE_RESET; `WAIT_FOR_HALT;
+    `PULSE_RESET;
+    #7;
     `IS(UUT.REG.r1, 16'h1234);
     `IS(UUT.REG.r2, 16'h4303);
     `IS(UUT.REG.r3, 16'h5678);
@@ -84,45 +99,54 @@ end
     `NEW_TEST;
     `PROGRAM(16'h0112); // load r1, #0012
     `PROGRAM(16'h0234); // load r2, #0034
-    `PROGRAM(16'h5124); // add r1, r2
-    `PROGRAM(16'h5222); // xor r2, r2
-    `PROGRAM(16'h5218); // not r2, r1
-    `PROGRAM(16'h5219); // neg r2, r1
-    `PROGRAM(16'h521a); // inc r2, r1
-    `PROGRAM(16'h521b); // dec r2, r1
-    `PROGRAM(16'h520a); // inc r2, r0
-    `PROGRAM(16'h520b); // dec r2, r0
-    `PROGRAM(16'h500a); // clc (inc r0, r0)
-    `PROGRAM(16'h500b); // sec (dec r0, r0)
-    `PROGRAM(16'h521c); // shr r2, r1
-    `PROGRAM(16'h522c); // shr r2, r2
-    `PROGRAM(16'h521d); // shrc r2, r1
-    `PROGRAM(16'h522d); // shrc r2, r2
-    `PROGRAM(16'h522e); // shl r2, r2   ; reuse r2 because I need a high bit
-    `PROGRAM(16'h500b); // sec
-    `PROGRAM(16'h522f); // shlc r2, r2
+    `PROGRAM(16'h6320); // mov r3, r2
+    `PROGRAM(16'h6128); // add r1, r2
+    `PROGRAM(16'h712c); // cmp r1, r2
+    `PROGRAM(16'h721c); // cmp r2, r1
+    `PROGRAM(16'h722c); // cmp r2, r2
+    `PROGRAM(16'h6223); // xor r2, r2
+    `PROGRAM(16'h6217); // not r2, r1
+    `PROGRAM(16'h621e); // neg r2, r1
+    `PROGRAM(16'h621a); // inc r2, r1
+    `PROGRAM(16'h621b); // dec r2, r1
+    `PROGRAM(16'h620a); // inc r2, r0
+    `PROGRAM(16'h620b); // dec r2, r0
+    `PROGRAM(16'h600a); // clc (inc r0, r0)
+    `PROGRAM(16'h600b); // sec (dec r0, r0)
+    `PROGRAM(16'h6214); // shr r2, r1
+    `PROGRAM(16'h6224); // shr r2, r2
+    `PROGRAM(16'h6215); // shrc r2, r1
+    `PROGRAM(16'h6225); // shrc r2, r2
+    `PROGRAM(16'h6228); // shl r2, r2   ; actually add -- reuse r2 because I need a high bit
+    `PROGRAM(16'h600b); // sec
+    `PROGRAM(16'h6229); // shlc r2, r2  ; actually adc
     `PROGRAM(16'h0000); // halt
 
     `PULSE_RESET;
-    #3; `IS(UUT.REG.r1, 16'h0046); `IS(UUT.cond, 3'b000); // 0012 + 0034 = 0046 znc
-    #1; `IS(UUT.REG.r2, 16'h0000); `IS(UUT.cond, 3'b100); // 0034 ^ 0034 = 0000 Znc
-    #1; `IS(UUT.REG.r2, 16'hffb9); `IS(UUT.cond, 3'b010); // ~0046  = ffb9 zNc
-    #1; `IS(UUT.REG.r2, 16'hffba); `IS(UUT.cond, 3'b011); // -0046  = ffba zNC
-    #1; `IS(UUT.REG.r2, 16'h0047); `IS(UUT.cond, 3'b000); // 0046++ = 0047 znc
-    #1; `IS(UUT.REG.r2, 16'h0045); `IS(UUT.cond, 3'b000); // 0046-- = 0045 znc
-    #1; `IS(UUT.REG.r2, 16'h0001); `IS(UUT.cond, 3'b000); // 0000++ = 0001 znc
-    #1; `IS(UUT.REG.r2, 16'hffff); `IS(UUT.cond, 3'b011); // 0000-- = ffff zNC
-    #1;                            `IS(UUT.cond, 3'b000); // inc r0, r0 = znc (bootleg clc)
-    #1;                            `IS(UUT.cond, 3'b011); // neg r0, r0 = zNC (bootleg sec)
-    #1; `IS(UUT.REG.r2, 16'h0023); `IS(UUT.cond, 3'b000); // 0046>> = 0023/0 znc
-    #1; `IS(UUT.REG.r2, 16'h0011); `IS(UUT.cond, 3'b001); // 0023>> = 0011/1 znC
-    #1; `IS(UUT.REG.r2, 16'h8023); `IS(UUT.cond, 3'b010); // >>0046 = 8023/0 zNc
-    #1; `IS(UUT.REG.r2, 16'h4011); `IS(UUT.cond, 3'b001); // >>0046 = 4011/1 znC
-    #1; `IS(UUT.REG.r2, 16'h8022); `IS(UUT.cond, 3'b010); // <<4011 = 0/8022 zNc
-    #1;                            `IS(UUT.cond, 3'b011); //                 zNC
-    #1; `IS(UUT.REG.r2, 16'h0045); `IS(UUT.cond, 3'b001); // 8022<< = 1/0045 znC
-    #1; `IS(UUT.state, 'b1110);
-
+    #1; `IS(UUT.REG.r1, 16'h0012);
+    #1; `IS(UUT.REG.r2, 16'h0034);
+    #1; `IS(UUT.REG.r3, 16'h0034); `IS(UUT.cond, 3'b000);
+    #1; `IS(UUT.REG.r1, 16'h0046); `IS(UUT.cond, 3'b000); // add: 0012 + 0034 = 0046 znc
+    #1; `IS(UUT.REG.r1, 16'h0046); `IS(UUT.cond, 3'b000); // cmp: 0046 - 0012 = 0011 znc
+    #1; `IS(UUT.REG.r2, 16'h0034); `IS(UUT.cond, 3'b011); // cmp: 0012 - 0034 = ffde zNC
+    #1; `IS(UUT.REG.r2, 16'h0034); `IS(UUT.cond, 3'b100); // cmp: 0034 - 0034 = 0000 Znc
+    #1; `IS(UUT.REG.r2, 16'h0000); `IS(UUT.cond, 3'b100); // xor: 0034 ^ 0034 = 0000 Znc
+    #1; `IS(UUT.REG.r2, 16'hffb9); `IS(UUT.cond, 3'b010); // not: ~0046  = ffb9 zNc
+    #1; `IS(UUT.REG.r2, 16'hffba); `IS(UUT.cond, 3'b011); // neg: -0046  = ffba zNC
+    #1; `IS(UUT.REG.r2, 16'h0047); `IS(UUT.cond, 3'b000); // inc: 0046++ = 0047 znc
+    #1; `IS(UUT.REG.r2, 16'h0045); `IS(UUT.cond, 3'b000); // dec: 0046-- = 0045 znc
+    #1; `IS(UUT.REG.r2, 16'h0001); `IS(UUT.cond, 3'b000); // inc: 0000++ = 0001 znc
+    #1; `IS(UUT.REG.r2, 16'hffff); `IS(UUT.cond, 3'b011); // dec: 0000-- = ffff zNC
+    #1;                            `IS(UUT.cond, 3'b000); // inc: 0++    = znc (bootleg clc)
+    #1;                            `IS(UUT.cond, 3'b011); // dec: 0--    = zNC (bootleg sec)
+    #1; `IS(UUT.REG.r2, 16'h0023); `IS(UUT.cond, 3'b000); // shr: 0046>> = 0023/0 znc
+    #1; `IS(UUT.REG.r2, 16'h0011); `IS(UUT.cond, 3'b001); // shr: 0023>> = 0011/1 znC
+    #1; `IS(UUT.REG.r2, 16'h8023); `IS(UUT.cond, 3'b010); // src: >>0046 = 8023/0 zNc
+    #1; `IS(UUT.REG.r2, 16'h4011); `IS(UUT.cond, 3'b001); // src: >>0046 = 4011/1 znC
+    #1; `IS(UUT.REG.r2, 16'h8022); `IS(UUT.cond, 3'b010); // shl: <<4011 = 0/8022 zNc
+    #1;                            `IS(UUT.cond, 3'b011); // sec:                 zNC
+    #1; `IS(UUT.REG.r2, 16'h0045); `IS(UUT.cond, 3'b001); // slc: 8022<< = 1/0045 znC
+    #1; `IS(UUT.state, 'b110);
 
 
 `NOTE("Store byte/word test");
@@ -156,6 +180,7 @@ end
     `MEM_IS(16'h0080, 16'h1234);
     `MEM_IS(16'h0084, 16'h5678);
 
+
 `NOTE("Load byte/word test");
     `NEW_TEST;
     `PROGRAM(16'h0111); // 00: load r1, #0011
@@ -176,49 +201,53 @@ end
     `IS(UUT.REG.r8, 16'h1234);
     `IS(UUT.REG.r9, 16'h5678);
 
+
 `NOTE("Branching test");
     `NEW_TEST;
-    `PROGRAM(16'h500a); // 00: inc r0, r0 (clears condition bits)
+    `PROGRAM(16'h600a); // 00: inc r0, r0 (clears condition bits)
     `PROGRAM(16'hc07f); // 02: beq YEET
-    `PROGRAM(16'hc205); // 04: bne *10
-    `PROGRAM(16'h0000); // 06: halt (skipped)
-    `PROGRAM(16'h0000); // 08: halt (target)
-    `PROGRAM(16'h0000); // 0a: halt (skipped)
-    `PROGRAM(16'h0000); // 0c: halt (skipped)
-    `PROGRAM(16'h0000); // 0e: halt (skipped)
-    `PROGRAM(16'hcffb); // 10: bra *08
+    `PROGRAM(16'hc205); // 04: bne *+a (0010)
+    `PROGRAM(16'hxxxx); // 06: halt (skipped)
+    `PROGRAM(16'hce00); // 08: bra *+0 (000a)
+    `PROGRAM(16'hxxxx); // 0a: (skipped)
+    `PROGRAM(16'hxxxx); // 0c: (skipped)
+    `PROGRAM(16'hxxxx); // 0e: (skipped)
+    `PROGRAM(16'hcffb); // 10: bra *-8 (0008)
 
     `PULSE_RESET;
-    #1; `IS(UUT.pc, 16'h0002); `IS(UUT.cond, 3'b000);   // confirm conditions
-    #1; `IS(UUT.pc, 16'h0004); // didn't jump
-    #1; `IS(UUT.pc, 16'h0010); // did jump
-    #1; `IS(UUT.pc, 16'h0008); // did jump again
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0002); `IS(UUT.cond, 3'b000); // initial conditions
+    #1; `IS(UUT.state, 3'b100);
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0004); // didn't jump
+    #1; `IS(UUT.state, 3'b100);
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0010); // did jump
+    #1; `IS(UUT.state, 3'b100);
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0008); // did jump again
+    #1; `IS(UUT.state, 3'b100);
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h000a); // did +0
 
-`NOTE("I/O test");
+
+`NOTE("Link register tests");
     `NEW_TEST;
-    `PROGRAM(16'h7100); // IN r1
-    `PROGRAM(16'h7110); // OUT r1
-    `PROGRAM(16'h511a); // INC r1
-    `PROGRAM(16'h7110); // OUT r1
+    `PROGRAM(16'h010e); // 00: li r1, 0010
+    `PROGRAM(16'hde02); // 02: bl *+4 (0008)
+    `PROGRAM(16'h0000); // 04: (return target)
+    `PROGRAM(16'hxxxx); // 06: ---
+    `PROGRAM(16'h5200); // 08: mfspr r2, pc
+    `PROGRAM(16'h5301); // 0a: mfspr r3, lr
+    `PROGRAM(16'h5180); // 0c: mtspr r1, pc (jmp r1 = 0010)
+    `PROGRAM(16'hxxxx); // 0e: ---
+    `PROGRAM(16'h5181); // 10: mtspr r2, lr
 
-    inport = 8'hA5;
-    `PULSE_RESET;
-    #1; `IS(UUT.REG.r1, 16'h00a5);
-    #1; `IS(outport,    16'h00a5);
-    #2; `IS(outport,    16'h00a6);
-
-`NOTE("Final test");
-    `NEW_TEST;
-    `PROGRAM(16'h0200); // load r2, 0
-    `PROGRAM(16'h1100); // load r1, ff00
-    `PROGRAM(16'h511a);
-    `PROGRAM(16'hc3fe);
-    `PROGRAM(16'h7210);
-    `PROGRAM(16'h522a);
-    `PROGRAM(16'hcffa);
 
     `PULSE_RESET;
-    #4096;
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0002); `IS(UUT.REG.r1, 16'h000e);   // li r1
+    #1; `IS(UUT.state, 3'b100);
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0008); `IS(UUT.lr, 16'h0004);       // bl
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h000a); `IS(UUT.REG.r2, 16'h0008);   // mfspr r2, pc
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h000c); `IS(UUT.REG.r3, 16'h0004);   // mfspr r3, lr
+    #1; `IS(UUT.state, 3'b100);
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0010);                              // mtspr r1, pc - jumped to 0010
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0012); `IS(UUT.lr, 16'h000e);       // mtspr r1, lr
 
 `DONE_TESTING;
 

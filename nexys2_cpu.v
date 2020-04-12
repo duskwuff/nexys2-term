@@ -11,48 +11,87 @@ module nexys2_cpu (
 
 wire clk;
 
+// verilator lint_off PINMISSING
 DCM_SP #(
-    .CLKFX_MULTIPLY (2),
+    .CLKFX_MULTIPLY (5),
     .CLKFX_DIVIDE   (10),
     .CLK_FEEDBACK   ("NONE")
 ) dcm (
     .CLKIN  (clk50),
+    .CLK0   (),
     .CLKFX  (clk),
     .RST    (1'b0)
 );
+// verilator lint_on PINMISSING
 
 reg [31:0] ctr;
 always @(posedge clk)
     ctr <= ctr + 1;
 
-wire [15:0] pc;
-wire [15:0] insn;
-wire [3:0] state;
-wire [7:0] outport;
+wire [15:0] addr;
+wire [15:0] drd, dwr;
+wire [1:0] bwe;
+
+wire ce_mem   = addr < 16'h2000;
+wire [15:0] drd_mem;
+reg old_ce_mem;
+always @(posedge clk) old_ce_mem <= ce_mem;
+
+wire ce_debug = addr >= 16'hff80;
+wire [15:0] drd_debug;
+reg old_ce_debug;
+always @(posedge clk) old_ce_debug <= ce_debug;
+
+assign drd = (
+    old_ce_mem ? drd_mem :
+    old_ce_debug ? drd_debug :
+    16'h0000
+);
+
+cozy_memory #(
+    .BITS (13), // 8 KB
+    .INIT_HI    ("blinker.hi.mem"),
+    .INIT_LO    ("blinker.lo.mem")
+) MEM (
+    .clk        (clk),
+    .addr       (addr),
+    .bwe        (ce_mem ? bwe : 2'b0),
+    .din        (dwr),
+    .dout       (drd_mem)
+);
+
+wire [15:0] ssd;
+
+debug_adapter DEBUG (
+    .clk        (clk),
+    .addr       (addr),
+    .bwe        (ce_debug ? bwe : 2'b0),
+    .din        (dwr),
+    .dout       (drd_debug),
+
+    .sw         (sw),
+    .btn        (btn),
+    .led        (led),
+    .ssd        (ssd)
+);
 
 cozy_cpu CPU (
     .clk        (clk),
     .reset_n    (!btn[0]),
-    .inport     (sw),
-    .outport    (outport),
-    .out_pc     (pc),
-    .out_state  (state),
-    .out_insn   (insn)
+    .mem_addr   (addr),
+    .mem_bwe    (bwe),
+    .mem_din    (drd),
+    .mem_dout   (dwr)
 );
 
-assign led = outport;
-
-/*
-reg [15:0] ssd_val = 0;
 seven_seg_driver SSD (
     .clk        (clk),
     .cke        (ctr[14:0] == 0),
     .blank      (0),
-    .value      (ssd_val),
+    .value      (ssd),
     .dp         (4'b0),
     .seg        (ssd_seg),
     .an         (ssd_an)
 );
-*/
 
 endmodule

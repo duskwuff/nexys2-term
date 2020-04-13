@@ -20,6 +20,7 @@ always @(posedge clk) begin
         case (addr[3:0])
             4'h0: led <= din[7:0];
             4'h2: ssd <= din[15:0];
+            default: /* nothing */;
         endcase
 
     case (addr[3:0])

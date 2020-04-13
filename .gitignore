@@ -1,2 +1,5 @@
 build/
 _xmsgs/
+*_bd.bmm
+
+program.mem

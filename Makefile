@@ -111,7 +111,7 @@ build/$(PROJECT)_sim.prj: build/$(PROJECT).prj
 	@$(foreach file,$(VHDTEST),echo "vhdl work \"../$(file)\"" >> $@;)
 	@echo "verilog xilinx $(XILINX)/verilog/src/glbl.v" >> $@
 
-build/$(PROJECT).scr: project.cfg
+build/$(PROJECT).scr: project.cfg build/$(PROJECT).prj
 	@echo "Updating $@"
 	@mkdir -p build
 	@rm -f $@
@@ -123,32 +123,46 @@ build/$(PROJECT).scr: project.cfg
 	    "-top $(TOPLEVEL)" \
 	    "-ofmt NGC" \
 	    "-p $(TARGET_PART)" \
-	    > build/$(PROJECT).scr
+	    > $@
 
-$(BITFILE): project.cfg $(VSOURCE) $(CONSTRAINTS) build/$(PROJECT).prj build/$(PROJECT).scr
-	@mkdir -p build
-	$(call RUN,xst) $(COMMON_OPTS) \
-	    -ifn $(PROJECT).scr
+build/$(PROJECT).ngc: $(VSOURCE) $(VHDSOURCE) build/$(PROJECT).scr
+	$(call RUN,xst) $(COMMON_OPTS) -ifn $(PROJECT).scr
+
+build/$(PROJECT).ngd: build/$(PROJECT).ngc $(CONSTRAINTS)
 	$(call RUN,ngdbuild) $(COMMON_OPTS) $(NGDBUILD_OPTS) \
-	    -p $(TARGET_PART) -uc ../$(CONSTRAINTS) \
+	    -p $(TARGET_PART) \
+	    $(foreach ucf,$(CONSTRAINTS),-uc ../$(ucf)) \
 	    $(PROJECT).ngc $(PROJECT).ngd
+
+build/$(PROJECT).map.ncd build/$(PROJECT).pcf: build/$(PROJECT).ngd
 	$(call RUN,map) $(COMMON_OPTS) $(MAP_OPTS) \
 	    -p $(TARGET_PART) \
-	    -w $(PROJECT).ngd -o $(PROJECT).map.ncd $(PROJECT).pcf
-	$(call RUN,par) $(COMMON_OPTS) $(PAR_OPTS) \
-	    -w $(PROJECT).map.ncd $(PROJECT).ncd $(PROJECT).pcf
-	$(call RUN,bitgen) $(COMMON_OPTS) $(BITGEN_OPTS) \
-	    -w $(PROJECT).ncd $(PROJECT).bit
-	@echo "$(COLOR:1=\e[1;32m)======== OK ========$(COLOR:1=\e[m)\n"
+	    -w \
+	    $(PROJECT).ngd -o $(PROJECT).map.ncd $(PROJECT).pcf
 
+build/$(PROJECT).par.ncd: build/$(PROJECT).map.ncd build/$(PROJECT).pcf
+	$(call RUN,par) $(COMMON_OPTS) $(PAR_OPTS) \
+	    -w $(PROJECT).map.ncd $(PROJECT).par.ncd $(PROJECT).pcf
+
+build/$(PROJECT).bit: build/$(PROJECT).par.ncd
+	$(call RUN,bitgen) $(COMMON_OPTS) $(BITGEN_OPTS) \
+	    -w $(PROJECT).par.ncd $(PROJECT).bit
+
+
+###########################################################################
+# Memory back-annotation
+###########################################################################
+
+build/$(PROJECT).xdl: build/$(PROJECT).par.ncd
+	$(call RUN,xdl) -ncd2xdl $(PROJECT).par.ncd $(PROJECT).xdl
 
 ###########################################################################
 # Testing (work in progress)
 ###########################################################################
 
-trace: project.cfg $(BITFILE)
+trace: build/$(PROJECT).par.ncd build/$(PROJECT).pcf
 	$(call RUN,trce) $(COMMON_OPTS) $(TRACE_OPTS) \
-	    $(PROJECT).ncd $(PROJECT).pcf
+	    $(PROJECT).par.ncd $(PROJECT).pcf -o $(PROJECT)
 
 lint: $(VSOURCE)
 	verilator $(VERILATOR_OPTS) --lint-only $(VSOURCE)

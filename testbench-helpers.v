@@ -36,7 +36,7 @@ end
 
 `define CLOCK(signal, period) \
     reg signal = 0; \
-    always #(period/2.0) signal = !signal;
+    always #(period/2.0) if (glbl.GSR == 0) signal = !signal;
 
 `define TIMEOUT(timeout) \
     initial begin \
@@ -47,4 +47,4 @@ end
 // Wait for GSR to be deasserted. This is required for many Xilinx primitive
 // simulations to work correctly.
 `define WAIT_GSR \
-    @(negedge glbl.GSR or !glbl.GSR); #0;
+    #1; @(negedge glbl.GSR or !glbl.GSR); #0;

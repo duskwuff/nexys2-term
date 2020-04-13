@@ -153,7 +153,7 @@ always @(posedge clk) begin
         end
 
         case (sel_xyz)
-            'b001: lr <= pc + 16'h2;
+            'b001: lr <= pc;
             'b010: lr <= rD;
             default: ; /* nothing */
         endcase

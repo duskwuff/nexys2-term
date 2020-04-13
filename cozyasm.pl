@@ -2,17 +2,19 @@
 use strict;
 use Data::Printer;
 use Getopt::Long;
+use Text::ParseWords qw( quotewords );
 
 my %INSN = (
-    db  => ['db'],
-    dw  => ['dw'],
-    da  => ['da'],
+    db  =>      ['db'],
+    dw  =>      ['dw'],
+    ascii =>    ['ascii'],
+    asciiz =>   ['ascii'],
 
     li  => ['li'],
 
     mov => ['xdsx', m => 0x6000, unary => 'nope'],
-    or  => ['xdsx', m => 0x6001, unary => 'nope'],
-    and => ['xdsx', m => 0x6002, unary => 'nope'],
+    and => ['xdsx', m => 0x6001, unary => 'nope'],
+    or  => ['xdsx', m => 0x6002, unary => 'nope'],
     xor => ['xdsx', m => 0x6003, unary => 'nope'],
     shr => ['xdsx', m => 0x6004, unary => 'dd'],
     src => ['xdsx', m => 0x6005, unary => 'dd'],
@@ -25,6 +27,8 @@ my %INSN = (
     sub => ['xdsx', m => 0x600c, unary => 'nope'],
     sbc => ['xdsx', m => 0x600d, unary => 'd0'],
     neg => ['xdsx', m => 0x600e, unary => 'dd'],
+
+    cmp => ['xdsx', m => 0x700c, unary => 'nope'],
 
     mfpc => ['xdsx', m => 0x5000, unary => 'd0', unary_only => 1],
     mtpc => ['xdsx', m => 0x5080, unary => 'd0', unary_only => 1],
@@ -68,23 +72,25 @@ my $ip = 0;
 my @program;
 my @program_source_lines;
 my @constpool;
-my @branch_fixups;
+my @fixups;
 my %labels;
 
 my $opt_output;
 my $opt_list = 0;
-my ($fh_hi, $fh_lo);
+my ($fh_hi, $fh_lo, $fh);
 
 GetOptions(
     "output|o=s"    => \$opt_output,
     "list!"         => \$opt_list,
 );
 
-die "Need an output filename\n" if !defined $opt_output;
-die "Output filename must end in .mem\n" if $opt_output !~ m{\.mem$};
-$opt_output = substr $opt_output, 0, -4;
-open $fh_hi, ">", "$opt_output.hi.mem" or die "$!";
-open $fh_lo, ">", "$opt_output.lo.mem" or die "$!";
+if (defined $opt_output) {
+    #die "Output filename must end in .mem\n" if $opt_output !~ m{\.mem$};
+    #my $basename = substr $opt_output, 0, -4;
+    #open $fh_hi, ">", "$basename.hi.mem" or die "$!";
+    #open $fh_lo, ">", "$basename.lo.mem" or die "$!";
+    open $fh, ">", $opt_output or die "$opt_output: $!";
+}
 
 while (my $line = <>) {
     chomp $line;
@@ -92,29 +98,34 @@ while (my $line = <>) {
     $line =~ s{^\s+|\s+$}{}g;
     next if !length $line;
     if ($line =~ m{^\.}) {
-        my ($directive, @args) = split m{\s+}, $line;
+        my ($directive, @args) = quotewords('\s+', 0, $line);
         do_directive($directive, @args);
     } elsif ($line =~ m{:$}) {
         my $label = substr($line, 0, -1);
-        die "Invalid label '$label'" if !valid_label($label);
+        error_out("Invalid label '$label'") if !valid_label($label);
+        error_out("Label '$label' already defined") if defined $labels{$label};
         $labels{$label} = $ip;
     } else {
-        my ($op, @args) = split m{(?:\s|,)\s*}, $line;
+        my ($op, @args) = quotewords('(?:\s|,)\s*', 0, $line);
         do_instruction($op, @args);
     }
 }
 
 flush_constpool();
 
-for my $fixup (@branch_fixups) {
-    if (defined(my $target = $labels{$fixup->{target}})) {
+for my $fixup (@fixups) {
+    my $target = $labels{$fixup->{target}};
+    die "Label $fixup->{target} never defined\n" if !defined $target;
+    if ($fixup->{type} eq 'branch') {
         my $rel = ($target - 2) - $fixup->{source};
-        die "wtf" if $rel & 1;
-        die sprintf("Jump from %04x to %04x (%s) is out of range", $fixup->{source}, $target, $fixup->{target})
+        die "wtf, misaligned branch" if $rel & 1;
+        die sprintf("Jump from %04x to %04x (%s) is out of range\n", $fixup->{source}, $target, $fixup->{target})
             if $rel > 512 or $rel < -512;
         $program[$fixup->{source}] |= ($rel >> 1) & 0x1ff;
+    } elsif ($fixup->{type} eq 'abs') {
+        $program[$fixup->{source}] = $target;
     } else {
-        die "Label '$fixup->{target}' never defined";
+        die "Unknown fixup type $fixup->{type}";
     }
 }
 
@@ -130,13 +141,17 @@ if ($opt_list) {
     }
 }
 
-for (my $p = 0; $p < @program; $p += 2) {
-    my $op = $program[$p] // 0;
-    printf $fh_hi "%02x\n", $op >> 8;
-    printf $fh_lo "%02x\n", $op & 0xff;
+if ($opt_output) {
+    for (my $p = 0; $p < @program; $p += 2) {
+        my $op = $program[$p] // 0;
+        #printf $fh_hi "%02x\n", $op >> 8;
+        #printf $fh_lo "%02x\n", $op & 0xff;
+        printf $fh "%04x\n", $op;
+    }
+    #close $fh_hi;
+    #close $fh_lo;
+    close $fh;
 }
-close $fh_hi;
-close $fh_lo;
 
 ##############################################################################
 
@@ -151,16 +166,24 @@ sub flush_constpool {
         $const_refs{$a}->[0] <=> $const_refs{$b}->[0]
     } keys %const_refs;
     for my $value (@sorted_consts) {
-        $program[$ip] = $value;
-        $program_source_lines[$ip] = sprintf("dw %04x ; constpool", $value);
+        my @sources;
         for my $source (@{$const_refs{$value}}) {
             my $offset = $ip - $source;
-            die "Constant pool too far from its references" if $offset > 512;
-            die "You need to flush constant pool before changing origin" if $offset <= 0;
+            error_out("Constant pool too far from its references") if $offset > 512;
+            error_out("Negative offset? Did you change origin with an open constant pool?") if $offset <= 0;
             my $rel = ($offset - 2) / 2;
             die "wtf, rel=$rel\n" if $rel > 0xff;
             $program[$source] |= $rel;
             $program_source_lines[$source] .= sprintf(" - at %04x", $ip);
+            push @sources, sprintf("%04x", $source);
+        }
+        if ($value =~ m{^@}) { # this is actually a relocation
+            $program[$ip] = 0xaaaa;
+            $program_source_lines[$ip] = sprintf("dw %s ; pooled const for %s", $value, join(", ", @sources));
+            push @fixups, { source => $ip, target => substr($value, 1), type => "abs" };
+        } else {
+            $program[$ip] = $value;
+            $program_source_lines[$ip] = sprintf("dw %04x ; pooled const for %s", $value, join(", ", @sources));
         }
         $ip += 2;
     }
@@ -170,19 +193,19 @@ sub flush_constpool {
 sub do_directive {
     my ($dir, @args) = @_;
     if ($dir eq ".org") {
-        die "Wrong number of arguments to .org" if @args != 1;
+        error_out("Wrong number of arguments to .org") if @args != 1;
         $ip = parse_number($args[0]);
-        die "Refusing to set ip to an odd address" if $ip & 1;
+        error_out("Refusing to set ip to an odd address") if $ip & 1;
     } elsif ($dir eq ".constpool") {
         flush_constpool();
     } else {
-        die "Unknown directive '$dir'";
+        error_out("Unknown directive '$dir'");
     }
 }
 
 sub do_instruction {
     my ($op, @args) = @_;
-    my ($type, %prop) = @{$INSN{$op} or die "Unknown opcode '$op'"};
+    my ($type, %prop) = @{$INSN{$op} or error_out("Unknown opcode '$op'")};
     my @insn;
 
     if ($type eq 'literal') {
@@ -195,52 +218,67 @@ sub do_instruction {
 
     } elsif ($type eq 'db') {
         for (my $i = 0; $i < @args; $i += 2) {
-            my ($lo, $hi) = ($args[$i], $args[$i+1]);
+            my ($lo, $hi) = (parse_number($args[$i]), parse_number($args[$i+1] // '0'));
             push @insn, $hi << 8 | $lo;
         }
 
-    } elsif ($type eq 'li') {
-        die "Need register and value for $op" if @args != 2;
-        my $r = parse_register($args[0]);
-        die "Cannot load to r0" if $r == 0;
-        my $v = parse_number($args[1]);
+    } elsif ($type eq 'ascii') {
+        my @chars = map { sprintf "%02x", ord $_ } map { split //, $_ } @args;
+        push @chars, 0 if $op eq 'asciiz';
+        return do_instruction('db', @chars);
 
-        my $op = ($r << 8);
-        if ($v == ($v & 0x00ff)) { # 00xx
-            push @insn, 0x0000 | $op | ($v & 0xff);
-            push @args, "; 00xx";
-        } elsif ($v == ($v | 0xff00)) { # ffxx
-            push @insn, 0x1000 | $op | ($v & 0xff);
-            push @args, "; ffxx";
-        } elsif ($v == ($v & 0xff00)) { # xx00
-            push @insn, 0x2000 | $op | (($v >> 8) & 0xff);
-            push @args, "; xx00";
-        } elsif ($v == ($v | 0x00ff)) { # xxff
-            push @insn, 0x3000 | $op | (($v >> 8) & 0xff);
-            push @args, "; xxff";
+    } elsif ($type eq 'li') {
+        error_out("Need register and value for $op") if @args != 2;
+
+        my $r = parse_register($args[0]);
+        error_out("Cannot load to r0") if $r == 0;
+
+        if ($args[1] =~ m{^@}) {
+            # Can't resolve this immediately; generate a pooled constant
+            push @insn, 0x4000 | ($r << 8);
+            push @constpool, { source => $ip, type => "reloc", value => $args[1] };
+            push @args, "; pooled reloc";
+
         } else {
-            push @insn, 0x4000 | $op;
-            push @constpool, { source => $ip, value => $v };
-            push @args, "; pooled";
+            my $v = parse_number($args[1]);
+
+            my $op = ($r << 8);
+            if ($v == ($v & 0x00ff)) { # 00xx
+                push @insn, 0x0000 | $op | ($v & 0xff);
+                push @args, "; 00xx";
+            } elsif ($v == ($v | 0xff00)) { # ffxx
+                push @insn, 0x1000 | $op | ($v & 0xff);
+                push @args, "; ffxx";
+            } elsif ($v == ($v & 0xff00)) { # xx00
+                push @insn, 0x2000 | $op | (($v >> 8) & 0xff);
+                push @args, "; xx00";
+            } elsif ($v == ($v | 0x00ff)) { # xxff
+                push @insn, 0x3000 | $op | (($v >> 8) & 0xff);
+                push @args, "; xxff";
+            } else {
+                push @insn, 0x4000 | $op;
+                push @constpool, { source => $ip, type => "literal", value => $v };
+                push @args, "; pooled";
+            }
         }
 
     } elsif ($type eq 'mem') {
-        die "Need register and register/offset" if @args != 2;
+        error_out("Need register and register/offset") if @args != 2;
         my $rd = parse_register($args[0]);
         my ($n, $rs) = parse_register_offset($args[1]);
         if ($prop{width} == 2) {
-            die "Cannot use odd offset with word-wide memory access" if $n & 1;
+            error_out("Cannot use odd offset with word-wide memory access") if $n & 1;
             $n >>= 1;
         }
-        die "Offset too far" if $n > 15;
+        error_out("Offset too far") if $n > 15;
         push @insn, ($prop{hi} << 12) | ($rd << 8) | ($rs << 4) | $n;
 
     } elsif ($type eq 'xdsx') {
-        die "Need arguments for $op" if @args < 1;
-        die "Too many arguments for $op" if @args > ($prop{unary_only} ? 1 : 2);
+        error_out("Need arguments for $op") if @args < 1;
+        error_out("Too many arguments for $op") if @args > ($prop{unary_only} ? 1 : 2);
         if (@args == 1) {
             if ($prop{unary} eq 'nope') {
-                die "Need two arguments for $op";
+                error_out("Need two arguments for $op");
             } elsif ($prop{unary} eq 'd0') {
                 @args = ($args[0], 'r0');
             } elsif ($prop{unary} eq '0d') {
@@ -248,7 +286,7 @@ sub do_instruction {
             } elsif ($prop{unary} eq 'dd') {
                 @args = ($args[0], $args[0]);
             } else {
-                die "Unknown unary for $op ??";
+                die "Unknown unary mode for $op";
             }
         }
         my $rd = parse_register($args[0]);
@@ -256,16 +294,15 @@ sub do_instruction {
         push @insn, $prop{m} | ($rd << 8) | ($rs << 4);
 
     } elsif ($type eq 'br') {
-        die "Need a label name for $op" if @args != 1 || !($args[0] eq '*' || valid_label($args[0]));
+        error_out("Need a label name for $op") if @args != 1 || !($args[0] eq '*' || valid_label($args[0]));
         push @insn, 0xc000 | ($prop{l} ? 0x1000 : 0) | ($prop{cc} << 9);
-        push @branch_fixups, { source => $ip, target => $args[0] } if $args[0] ne '*';
+        push @fixups, { type => 'branch', source => $ip, target => $args[0] } if $args[0] ne '*';
 
     } elsif ($type eq 'alias') {
-        die "Wrong number of arguments to $op" if @args != $prop{args};
+        error_out("Wrong number of arguments to $op") if @args != $prop{args};
         my @new = @{$prop{to}};
         s/^\$(\d+)$/$args[$1-1]/ for @new;
-        do_instruction(@new);
-        return;
+        return do_instruction(@new);
 
     } else {
         die "unknown op type $type for $op ??";
@@ -289,7 +326,7 @@ sub parse_number {
     } elsif ($n =~ m{^[0-9a-f]+$}i) {
         return hex($n);
     } else {
-        die "Invalid number '$n'\n";
+        error_out("Invalid number '$n'");
     }
 }
 
@@ -298,7 +335,7 @@ sub parse_register {
     if (my ($n) = $r =~ m{^r(\d+)$}) {
         return $n if $n < 16;
     }
-    die "Invalid register '$r'";
+    error_out("Invalid register '$r'");
 }
 
 sub parse_register_offset {
@@ -306,14 +343,18 @@ sub parse_register_offset {
     if (my ($r) = $ra =~ m{^(r\d+)$}) {
         return (0, parse_register($r));
     } elsif (my ($n, $r) = $ra =~ m{^(\d+)\((r\d+)\)$}) {
-        die "Invalid offset in '$ra'" if $n < 0;
+        error_out("Invalid offset in '$ra'") if $n < 0;
         return (int $n, parse_register($r));
     } else {
-        die "Invalid memory address '$ra'";
+        error_out("Invalid memory address '$ra'");
     }
 }
 
 sub valid_label {
     my ($lbl) = @_;
     return $lbl =~ m{^\w+$};
+}
+
+sub error_out {
+    die "$_[0] at $ARGV line $.\n";
 }

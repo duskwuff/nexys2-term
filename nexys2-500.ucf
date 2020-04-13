@@ -2,6 +2,10 @@ NET "clk50"   LOC = "B8"; # Bank = 0, Pin name = IP_L13P_0/GCLK8, Type = GCLK, S
 NET "clk50" TNM_NET = clk50;
 TIMESPEC TS_clk50 = PERIOD "clk50" 50 MHz HIGH 50%;
 
+NET "clkSocket" LOC = "U9"; # Bank = 2, Pin name = IO_L13P_2/D4/GCLK14, Type = DUAL/GCLK, Sch name = GCLK1
+NET "clkSocket" TNM_NET = clkSocket;
+TIMESPEC TS_clkSocket = PERIOD "clkSocket" 33 MHz HIGH 50%;
+
 # LEDs
 NET "led<0>"  LOC = "J14"; # Bank = 1, Pin name = IO_L14N_1/A3/RHCLK7, Type = RHCLK/DUAL, Sch name = JD10/LD0
 NET "led<1>"  LOC = "J15"; # Bank = 1, Pin name = IO_L14P_1/A4/RHCLK6, Type = RHCLK/DUAL, Sch name = JD9/LD1
@@ -61,5 +65,19 @@ NET "ssd_an<3>" LOC = "F15"; # Bank = 1, Pin name = IO_L21P_1, Type = I/O, Sch n
 #NET "ps2_dat" LOC = "P11"; # Bank = 2, Pin name = IO_L18P_2, Type = I/O, Sch name = PS2D
 
 # RS232 connector
-#NET "rs232_rx" LOC = "U6"; # Bank = 2, Pin name = IP, Type = INPUT, Sch name = RS-RX
-#NET "rs232_tx" LOC = "P9"; # Bank = 2, Pin name = IO, Type = I/O, Sch name = RS-TX
+NET "rs232_rx" LOC = "U6"; # Bank = 2, Pin name = IP, Type = INPUT, Sch name = RS-RX
+NET "rs232_tx" LOC = "P9"; # Bank = 2, Pin name = IO, Type = I/O, Sch name = RS-TX
+
+# VGA connector
+NET "vgaRgb<7>" LOC = "R8"; # Bank = 2, Pin name = IO_L10P_2, Type = I/O, Sch name = RED2
+NET "vgaRgb<6>" LOC = "T8"; # Bank = 2, Pin name = IO_L10N_2, Type = I/O, Sch name = RED1
+NET "vgaRgb<5>" LOC = "R9"; # Bank = 2, Pin name = IO/D5, Type = DUAL, Sch name = RED0
+NET "vgaRgb<4>" LOC = "P6"; # Bank = 2, Pin name = IO_L05N_2, Type = I/O, Sch name = GRN2
+NET "vgaRgb<3>" LOC = "P8"; # Bank = 2, Pin name = IO_L09P_2, Type = I/O, Sch name = GRN1
+NET "vgaRgb<2>" LOC = "N8"; # Bank = 2, Pin name = IO_L09N_2, Type = I/O, Sch name = GRN0
+NET "vgaRgb<1>" LOC = "U4"; # Bank = 2, Pin name = IO_L03P_2/DOUT/BUSY, Type = DUAL, Sch name = BLU2
+NET "vgaRgb<0>" LOC = "U5"; # Bank = 2, Pin name = IO/VREF_2, Type = VREF, Sch name = BLU1
+NET "vgaHsync"  LOC = "T4"; # Bank = 2, Pin name = IO_L03N_2/MOSI/CSI_B, Type = DUAL, Sch name = HSYNC
+NET "vgaVsync"  LOC = "U3"; # Bank = 2, Pin name = IO_L01P_2/CSO_B, Type = DUAL, Sch name = VSYNC
+
+# vim: set syn=conf:

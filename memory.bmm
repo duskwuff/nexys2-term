@@ -1,0 +1,12 @@
+ADDRESS_SPACE ram RAMB16 [0x0000:0x3fff]
+    BUS_BLOCK
+        MEM/gen[14].bram [15:14];
+        MEM/gen[12].bram [13:12];
+        MEM/gen[10].bram [11:10];
+        MEM/gen[8].bram [9:8];
+        MEM/gen[6].bram [7:6];
+        MEM/gen[4].bram [5:4];
+        MEM/gen[2].bram [3:2];
+        MEM/gen[0].bram [1:0];
+    END_BUS_BLOCK;
+END_ADDRESS_SPACE;

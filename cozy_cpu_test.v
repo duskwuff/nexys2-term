@@ -22,9 +22,7 @@ cozy_cpu UUT (
     .mem_din    (drd)
 );
 
-cozy_memory #(
-    .BITS (8)
-) MEM (
+cozy_memory_sim MEM (
     .clk        (clk),
     .addr       (addr),
     .bwe        (bwe),
@@ -242,9 +240,9 @@ end
     `PULSE_RESET;
     #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0002); `IS(UUT.REG.r1, 16'h000e);   // li r1
     #1; `IS(UUT.state, 3'b100);
-    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0008); `IS(UUT.lr, 16'h0004);       // bl
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0008); `IS(UUT.lr, 16'h0002);       // bl
     #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h000a); `IS(UUT.REG.r2, 16'h0008);   // mfspr r2, pc
-    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h000c); `IS(UUT.REG.r3, 16'h0004);   // mfspr r3, lr
+    #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h000c); `IS(UUT.REG.r3, 16'h0002);   // mfspr r3, lr
     #1; `IS(UUT.state, 3'b100);
     #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0010);                              // mtspr r1, pc - jumped to 0010
     #1; `IS(UUT.state, 3'b000); `IS(UUT.pc, 16'h0012); `IS(UUT.lr, 16'h000e);       // mtspr r1, lr
